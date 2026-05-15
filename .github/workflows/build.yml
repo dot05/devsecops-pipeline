@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: Build, Scan and Push Docker Images
 
 on:
   push:
@@ -6,12 +6,13 @@ on:
       - main
 
 jobs:
-  build-and-push:
+  build-scan-push:
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
       packages: write
+      security-events: write
 
     steps:
       - name: Checkout code
@@ -33,9 +34,47 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Docker Image
+      - name: Build Docker Image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./app
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+
+      - name: Trivy - Scan Docker Image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/devsecops-pipeline:latest
+          format: table
+          exit-code: 0
+          severity: CRITICAL,HIGH
+          output: trivy-report.txt
+
+      - name: Checkov - Scan Kubernetes Manifests
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: k8s/
+          framework: kubernetes
+          soft_fail: true
+          output_format: cli
+          download_external_modules: false
+
+      - name: tfsec - Scan Terraform Code
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: terraform/
+          soft_fail: true
+
+      - name: Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+
+      - name: Upload Trivy Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.txt
