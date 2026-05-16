@@ -20,16 +20,41 @@ spec:
       labels:
         app: devsecops-app
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: devsecops-app
           image: ghcr.io/dot05/devsecops-pipeline:latest
           ports:
             - containerPort: 8080
-          envFrom:
-            - configMapRef:
-                name: devsecops-config
-            - secretRef:
-                name: devsecops-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: devsecops-config
+                  key: APP_ENV
+            - name: APP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: devsecops-config
+                  key: APP_PORT
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: devsecops-secret
+                  key: API_KEY
           livenessProbe:
             httpGet:
               path: /health
